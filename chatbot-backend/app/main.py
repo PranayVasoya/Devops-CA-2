@@ -2,12 +2,15 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from .chat_engine import ChatEngine
+import os
 
 # Initialize the FastAPI app
 app = FastAPI(title="SynKro Assist API")
 
-# Initialize the ChatEngine (loads models and KB on startup)
-chat_engine = ChatEngine()
+# Lazy-initialize ChatEngine to avoid heavy startup and env deps during import (e.g., CI)
+chat_engine = None
+if os.getenv("BACKEND_EAGER_INIT", "1") == "1":
+    chat_engine = ChatEngine()
 
 # Configure CORS
 origins = [
@@ -45,5 +48,8 @@ async def chat_endpoint(request: ChatRequest):
     """
     Receives a user query and returns a response from the chatbot.
     """
+    global chat_engine
+    if chat_engine is None:
+        chat_engine = ChatEngine()
     response_data = chat_engine.generate_response(request.query, request.user_id)
     return ChatResponse(**response_data)

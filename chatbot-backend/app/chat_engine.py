@@ -18,9 +18,12 @@ class ChatEngine:
         print("Model loaded.")
 
         api_key = os.getenv("GROQ_API_KEY")
+        # Allow CI or local non-LLM usage to skip hard failure
         if not api_key:
-            raise ValueError("GROQ_API_KEY not found in environment variables.")
-        self.llm_client = Groq(api_key=api_key)
+            print("Warning: GROQ_API_KEY not set; LLM features will be disabled.")
+            self.llm_client = None
+        else:
+            self.llm_client = Groq(api_key=api_key)
         self.llm_model = "llama-3.3-70b-versatile"
 
         self.kb = self._load_knowledge_base(kb_path)
@@ -30,13 +33,16 @@ class ChatEngine:
         db_name = os.getenv("MONGO_DB_NAME")
         collection_name = os.getenv("MONGO_COLLECTION_NAME")
         if not all([mongo_uri, db_name, collection_name]):
-            raise ValueError("MongoDB connection details missing in .env")
-
-        print("Connecting to MongoDB...")
-        self.mongo_client = MongoClient(mongo_uri)
-        self.db = self.mongo_client[db_name]
-        self.collection = self.db[collection_name]
-        print("MongoDB connection successful.")
+            print("Warning: MongoDB connection details missing; logging to DB disabled.")
+            self.mongo_client = None
+            self.db = None
+            self.collection = None
+        else:
+            print("Connecting to MongoDB...")
+            self.mongo_client = MongoClient(mongo_uri)
+            self.db = self.mongo_client[db_name]
+            self.collection = self.db[collection_name]
+            print("MongoDB connection successful.")
 
     def _load_knowledge_base(self, kb_path):
         print(f"Loading knowledge base from {kb_path}...")
@@ -87,7 +93,7 @@ class ChatEngine:
         return None, similarity
 
     def _log_to_mongo(self, user_id, query, response, source, topic=None):
-        if user_id == "guest":
+        if user_id == "guest" or self.collection is None:
             return
 
         log_entry = {
@@ -101,6 +107,8 @@ class ChatEngine:
         self.collection.insert_one(log_entry)
 
     def _is_creative_request(self, query: str) -> bool:
+        if self.llm_client is None:
+            return False
         print("Classifying intent for query using Groq...")
         try:
             chat_completion = self.llm_client.chat.completions.create(
@@ -144,6 +152,8 @@ class ChatEngine:
         if is_creative:
             # The question is creative, allow all users (including guests) to use the LLM.
             print("Creative intent detected. Calling Groq...")
+            if self.llm_client is None:
+                return {"answer": "Creative features are disabled.", "source": "Disabled"}
             try:
                 chat_completion = self.llm_client.chat.completions.create(
                     messages=[

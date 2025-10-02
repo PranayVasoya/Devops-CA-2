@@ -38,6 +38,8 @@ jobs:
     defaults:
       run:
         working-directory: chatbot-backend
+    env:
+      BACKEND_EAGER_INIT: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

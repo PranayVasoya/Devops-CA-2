@@ -2,7 +2,15 @@ import nodemailer from "nodemailer";
 import User from "@/models/userModel";
 import crypto from "crypto";
 
-export const sendEmail = async ({ email, emailType, userId }: any) => {
+type EmailType = "VERIFY" | "RESET";
+
+interface SendEmailParams {
+  email: string;
+  emailType: EmailType;
+  userId: string;
+}
+
+export const sendEmail = async ({ email, emailType, userId }: SendEmailParams) => {
   try {
     if (!email || !emailType || !userId) {
       throw new Error("Email, emailType, and userId are required");
@@ -79,8 +87,12 @@ export const sendEmail = async ({ email, emailType, userId }: any) => {
     const mailResponse = await transport.sendMail(mailOptions);
     console.log("Mailer: Email sent successfully to:", email, "Response:", mailResponse);
     return mailResponse;
-  } catch (error: any) {
-    console.error("Mailer: Error sending email:", error);
-    throw new Error(`Failed to send email: ${error.message}`);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error("Mailer: Error sending email:", error);
+      throw new Error(`Failed to send email: ${error.message}`);
+    }
+    console.error("Mailer: Unknown error sending email:", error);
+    throw new Error("Failed to send email: Unknown error");
   }
 };
