@@ -1,72 +1,71 @@
----
-- name: Configure hosts for Devops-CA-2
-  hosts: all
-  become: true
-  vars_files:
-    - group_vars/all.yml
-  pre_tasks:
-    - name: Update apt cache (Debian/Ubuntu)
-      apt:
-        update_cache: yes
-        cache_valid_time: 3600
-      when: ansible_os_family == 'Debian'
-
-  roles: []
-
+- name: Configure Server and Deploy Chatbot Backend
+  # This tells Ansible to run on all servers listed in the [servers] group of your inventory.
+  hosts: servers
+  # This allows Ansible to run commands with 'sudo' for administrative tasks.
+  become: yes
   tasks:
-    - name: Ensure common packages are installed (Debian/Ubuntu)
-      apt:
-        name: "{{ common_packages }}"
-        state: present
-      when: ansible_os_family == 'Debian'
+    - name: Update apt package cache (for Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+      # This 'when' condition ensures the task only runs on Debian-based systems.
+      when: ansible_os_family == "Debian"
 
-    - name: Ensure common packages are installed (RHEL/CentOS)
-      yum:
-        name: "{{ common_packages }}"
-        state: present
-      when: ansible_os_family == 'RedHat'
-
-    - name: Create application users
-      user:
-        name: "{{ item.name }}"
-        uid: "{{ item.uid | default(omit) }}"
-        groups: "{{ item.groups | default(omit) }}"
-        state: "{{ item.state | default('present') }}"
-        shell: "{{ item.shell | default('/bin/bash') }}"
-        create_home: yes
-      loop: "{{ app_users }}"
-
-    - name: Manage files with provided content
-      copy:
-        dest: "{{ item.path }}"
-        content: "{{ item.content }}"
-        owner: root
-        group: root
-        mode: '0644'
-      loop: "{{ managed_files }}"
-
-    - name: Install Node.js for frontend (Debian/Ubuntu)
-      shell: |
-        curl -fsSL https://deb.nodesource.com/setup_{{ frontend_node_version }} | bash -
-        apt-get install -y nodejs
-      args:
-        executable: /bin/bash
-      when: ansible_os_family == 'Debian'
-
-    - name: Ensure Python {{ backend_python_version }} is installed (Debian/Ubuntu)
-      apt:
+    - name: Install required system packages for Docker
+      ansible.builtin.apt:
         name:
-          - python3
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
           - python3-pip
         state: present
-      when: ansible_os_family == 'Debian'
+      when: ansible_os_family == "Debian"
 
-    - name: Ensure pip packages for backend are present
-      pip:
-        name:
-          - virtualenv
-          - pip
+    - name: Add Docker's official GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
         state: present
+      when: ansible_os_family == "Debian"
 
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+      when: ansible_os_family == "Debian"
 
+    - name: Install Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
 
+    - name: Install Docker SDK for Python
+      ansible.builtin.pip:
+        name: docker
+
+    - name: Pull the latest chatbot backend image from Docker Hub
+      community.docker.docker_image:
+        name: "{{ dockerhub_username }}/synkro-chatbot-backend:latest"
+        source: pull
+      # The '{{ dockerhub_username }}' is the variable from your group_vars/all.yml file.
+
+    - name: Stop and remove any existing chatbot container
+      community.docker.docker_container:
+        name: chatbot-backend
+        state: absent
+      # 'ignore_errors' prevents the playbook from failing if the container doesn't exist on the first run.
+      ignore_errors: true
+
+    - name: Run the new chatbot backend container
+      community.docker.docker_container:
+        name: chatbot-backend
+        image: "{{ dockerhub_username }}/synkro-chatbot-backend:latest"
+        state: started
+        restart_policy: always
+        published_ports:
+          # This maps port 8000 inside the container to port 8000 on the server.
+          - "8000:8000"

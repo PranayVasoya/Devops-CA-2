@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # The name of your deployment
+  name: chatbot-backend-deployment
+  labels:
+    app: chatbot-backend
+spec:
+  # Run 2 replicas of your application for high availability
+  replicas: 2
+  # The strategy for updating pods, 'RollingUpdate' ensures zero downtime
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    # This selector is how the Deployment finds which pods to manage
+    matchLabels:
+      app: chatbot-backend
+  template:
+    metadata:
+      # The pods created will have this label
+      labels:
+        app: chatbot-backend
+    spec:
+      containers:
+        - name: chatbot-backend-container
+          # IMPORTANT: Replace this with your actual Docker Hub image
+          image: your_dockerhub_username/synkro-chatbot-backend:latest
+          ports:
+            # The port your application listens on inside the container
+            - containerPort: 8000

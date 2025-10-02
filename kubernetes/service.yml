@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # The name of your service
+  name: chatbot-backend-service
+spec:
+  # This selector is how the Service finds which pods to send traffic to.
+  # It must match the pods' labels from the Deployment.
+  selector:
+    app: chatbot-backend
+  # 'LoadBalancer' makes the service accessible from outside the cluster.
+  # For local clusters like Minikube, you might use 'NodePort' instead.
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      # The port that the service will be exposed on
+      port: 80
+      # The port on the pods that traffic will be forwarded to
+      targetPort: 8000
