@@ -1,0 +1,72 @@
+---
+- name: Configure hosts for Devops-CA-2
+  hosts: all
+  become: true
+  vars_files:
+    - group_vars/all.yml
+  pre_tasks:
+    - name: Update apt cache (Debian/Ubuntu)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == 'Debian'
+
+  roles: []
+
+  tasks:
+    - name: Ensure common packages are installed (Debian/Ubuntu)
+      apt:
+        name: "{{ common_packages }}"
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure common packages are installed (RHEL/CentOS)
+      yum:
+        name: "{{ common_packages }}"
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Create application users
+      user:
+        name: "{{ item.name }}"
+        uid: "{{ item.uid | default(omit) }}"
+        groups: "{{ item.groups | default(omit) }}"
+        state: "{{ item.state | default('present') }}"
+        shell: "{{ item.shell | default('/bin/bash') }}"
+        create_home: yes
+      loop: "{{ app_users }}"
+
+    - name: Manage files with provided content
+      copy:
+        dest: "{{ item.path }}"
+        content: "{{ item.content }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop: "{{ managed_files }}"
+
+    - name: Install Node.js for frontend (Debian/Ubuntu)
+      shell: |
+        curl -fsSL https://deb.nodesource.com/setup_{{ frontend_node_version }} | bash -
+        apt-get install -y nodejs
+      args:
+        executable: /bin/bash
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure Python {{ backend_python_version }} is installed (Debian/Ubuntu)
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure pip packages for backend are present
+      pip:
+        name:
+          - virtualenv
+          - pip
+        state: present
+
+
+

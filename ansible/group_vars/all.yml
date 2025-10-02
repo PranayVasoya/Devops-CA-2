@@ -1,0 +1,24 @@
+---
+common_packages:
+  - git
+  - curl
+  - unzip
+  - ca-certificates
+
+frontend_node_version: "20.x"
+backend_python_version: "3.11"
+
+app_users:
+  - name: appuser
+    uid: 1010
+    groups: ["sudo"]
+    state: present
+    shell: /bin/bash
+
+managed_files:
+  - path: /etc/motd
+    content: |
+      Welcome to Devops-CA-2 managed by Ansible.
+
+
+
