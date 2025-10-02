@@ -13,6 +13,10 @@ jobs:
     defaults:
       run:
         working-directory: .
+    env:
+      # Use dummy values to avoid build-time failures for server code importing DB config
+      MONGO_URI: mongodb://localhost:27017/dummy
+      NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,6 +26,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      - name: Post Setup Node.js (print versions)
+        run: |
+          node -v
+          npm -v
 
       - name: Install dependencies
         run: npm ci
