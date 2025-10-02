@@ -87,13 +87,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Compute lowercase owner for GHCR tags
+        shell: bash
+        run: |
+          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+          echo "IMAGE_TAG_FRONTEND=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/devops-ca-2-frontend:ci" >> $GITHUB_ENV
+          echo "IMAGE_TAG_BACKEND=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/devops-ca-2-backend:ci" >> $GITHUB_ENV
+
       - name: Build frontend image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: false
-          tags: ghcr.io/${{ github.repository_owner }}/devops-ca-2-frontend:ci
+          tags: ${{ env.IMAGE_TAG_FRONTEND }}
 
       - name: Build backend image
         uses: docker/build-push-action@v6
@@ -101,7 +108,7 @@ jobs:
           context: ./chatbot-backend
           file: ./chatbot-backend/Dockerfile
           push: false
-          tags: ghcr.io/${{ github.repository_owner }}/devops-ca-2-backend:ci
+          tags: ${{ env.IMAGE_TAG_BACKEND }}
 
 
 
