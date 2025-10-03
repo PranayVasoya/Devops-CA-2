@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  {{ app_name }}:
+    image: pranayvasoya/synkro-chatbot-backend:latest
+    container_name: {{ app_name }}
+    ports:
+      - "{{ app_port }}:{{ app_port }}"
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=development
+      - PORT={{ app_port }}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

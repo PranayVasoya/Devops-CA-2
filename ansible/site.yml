@@ -1,16 +1,32 @@
+---
 - name: Configure Server and Deploy Chatbot Backend
-  # This tells Ansible to run on all servers listed in the [servers] group of your inventory.
   hosts: servers
-  # This allows Ansible to run commands with 'sudo' for administrative tasks.
   become: yes
-  tasks:
+  vars_files:
+    - "{{ playbook_dir }}/group_vars/all.yml"
+
+  handlers:
+    - name: restart docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+        enabled: yes
+      when: ansible_service_mgr == 'systemd'
+
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+  pre_tasks:
     - name: Update apt package cache (for Debian/Ubuntu)
       ansible.builtin.apt:
         update_cache: yes
-      # This 'when' condition ensures the task only runs on Debian-based systems.
+        cache_valid_time: 3600
       when: ansible_os_family == "Debian"
+      tags: [system, packages]
 
-    - name: Install required system packages for Docker
+  tasks:
+    - name: Ensure system packages are installed
       ansible.builtin.apt:
         name:
           - apt-transport-https
@@ -18,54 +34,140 @@
           - curl
           - software-properties-common
           - python3-pip
+          - python3-setuptools
+          - git
+          - unzip
+          - htop
+          - ufw
         state: present
+        update_cache: yes
       when: ansible_os_family == "Debian"
+      tags: [system, packages]
+
+    - name: Set timezone
+      ansible.builtin.timezone:
+        name: "{{ system_timezone }}"
+      tags: [system]
+
+    - name: Ensure app user exists
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        group: "{{ app_group }}"
+        system: no
+        create_home: yes
+        shell: /bin/bash
+      tags: [users]
+
+    - name: Ensure application directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0755'
+      loop:
+        - "{{ app_dir }}"
+        - "{{ log_dir }}"
+      tags: [files, directories]
 
     - name: Add Docker's official GPG key
       ansible.builtin.apt_key:
         url: https://download.docker.com/linux/ubuntu/gpg
         state: present
       when: ansible_os_family == "Debian"
+      tags: [docker]
 
     - name: Add Docker repository
       ansible.builtin.apt_repository:
         repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
         state: present
+        update_cache: yes
       when: ansible_os_family == "Debian"
+      tags: [docker]
+      notify: restart docker
 
-    - name: Install Docker Engine
+    - name: Install Docker packages
       ansible.builtin.apt:
         name:
           - docker-ce
           - docker-ce-cli
           - containerd.io
+          - docker-compose-plugin
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
+      tags: [docker]
+      notify: restart docker
+
+    - name: Add user to docker group
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        groups: docker
+        append: yes
+      tags: [users, docker]
 
     - name: Install Docker SDK for Python
       ansible.builtin.pip:
         name: docker
+        state: present
+      tags: [python, docker]
 
-    - name: Pull the latest chatbot backend image from Docker Hub
-      community.docker.docker_image:
-        name: "{{ dockerhub_username }}/synkro-chatbot-backend:latest"
-        source: pull
-      # The '{{ dockerhub_username }}' is the variable from your group_vars/all.yml file.
-
-    - name: Stop and remove any existing chatbot container
-      community.docker.docker_container:
-        name: chatbot-backend
-        state: absent
-      # 'ignore_errors' prevents the playbook from failing if the container doesn't exist on the first run.
-      ignore_errors: true
-
-    - name: Run the new chatbot backend container
-      community.docker.docker_container:
-        name: chatbot-backend
-        image: "{{ dockerhub_username }}/synkro-chatbot-backend:latest"
+    - name: Ensure Docker is running and enabled
+      ansible.builtin.systemd:
+        name: docker
         state: started
-        restart_policy: always
-        published_ports:
-          # This maps port 8000 inside the container to port 8000 on the server.
-          - "8000:8000"
+        enabled: yes
+      tags: [docker]
+
+    - name: Pull the latest application image
+      community.docker.docker_image:
+        name: "{{ docker_image }}:{{ docker_tag }}"
+        source: pull
+        force_source: "{{ force_pull | default(false) }}"
+      tags: [docker, deploy]
+
+    - name: Stop and remove existing container if it exists
+      community.docker.docker_container:
+        name: "{{ docker_container_name }}"
+        state: absent
+      ignore_errors: yes
+      tags: [docker, deploy]
+
+    - name: Deploy application container
+      community.docker.docker_container:
+        name: "{{ docker_container_name }}"
+        image: "{{ docker_image }}:{{ docker_tag }}"
+        state: started
+        restart_policy: "{{ docker_restart_policy }}"
+        ports:
+          - "{{ app_port }}:{{ app_port }}"
+        env:
+          APP_ENV: "{{ app_env }}"
+          PORT: "{{ app_port }}"
+        volumes:
+          - "{{ log_dir }}:/app/logs"
+        log_driver: json-file
+        log_options:
+          max-size: "10m"
+          max-file: "3"
+      tags: [docker, deploy]
+
+    - name: Ensure firewall is configured
+      ansible.builtin.ufw:
+        rule: allow
+        port: "{{ app_port }}"
+        proto: tcp
+      when: ansible_os_family == "Debian"
+      tags: [security]
+
+    - name: Check application health
+      ansible.builtin.uri:
+        url: "http://localhost:{{ app_port }}/health"
+        return_content: yes
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 5
+      delay: 5
+      ignore_errors: yes
+      tags: [deploy, test]

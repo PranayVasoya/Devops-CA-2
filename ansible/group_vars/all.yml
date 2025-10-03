@@ -1,3 +1,29 @@
-# This variable stores your Docker Hub username.
-# Ansible will use this to pull the correct image.
+---
+# Docker Configuration
 dockerhub_username: "pranayvasoya"
+docker_image: "{{ dockerhub_username }}/synkro-chatbot-backend"
+docker_tag: "latest"
+docker_container_name: "chatbot-backend"
+docker_restart_policy: "always"
+
+# Application Configuration
+app_name: "chatbot-backend"
+app_port: 8000
+app_env: "production"
+
+# System Configuration
+system_timezone: "UTC"
+
+# Nginx Configuration (if needed)
+enable_nginx: false
+nginx_site_name: "chatbot"
+nginx_domains:
+  - "example.com"
+  - "www.example.com"
+
+# SSL Configuration (if needed)
+enable_ssl: false
+letsencrypt_email: "admin@example.com"
+
+# Monitoring (if needed)
+enable_monitoring: false

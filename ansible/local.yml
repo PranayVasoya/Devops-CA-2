@@ -1,0 +1,57 @@
+---
+- name: Configure Local Development Environment
+  hosts: localhost
+  connection: local
+  become: yes
+  
+  vars:
+    app_name: "chatbot"
+    app_port: 8000
+    docker_compose_version: "2.23.0"
+
+  tasks:
+    - name: Install required system packages
+      ansible.builtin.apt:
+        update_cache: yes
+        name:
+          - docker.io
+          - docker-compose
+          - python3-pip
+          - git
+          - curl
+        state: present
+      when: ansible_os_family == "Debian"
+      tags: [packages]
+
+    - name: Ensure Docker service is running
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: yes
+      tags: [docker]
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "/opt/{{ app_name }}"
+        state: directory
+        mode: '0755'
+      tags: [setup]
+
+    - name: Create docker-compose.yml
+      ansible.builtin.template:
+        src: templates/docker-compose.yml.j2
+        dest: "/opt/{{ app_name }}/docker-compose.yml"
+        mode: '0644'
+      tags: [deploy]
+
+    - name: Start application with Docker Compose
+      ansible.builtin.command: docker-compose up -d
+      args:
+        chdir: "/opt/{{ app_name }}"
+      register: docker_compose_up
+      changed_when: "'Creating' in docker_compose_up.stdout"
+      tags: [deploy]
+
+    - name: Show application status
+      ansible.builtin.debug:
+        msg: "Application is running at http://localhost:{{ app_port }}"
